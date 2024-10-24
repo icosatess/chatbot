@@ -97,6 +97,7 @@ func SubscribeForUpdates() {
 	if t != websocket.MessageText {
 		log.Panicf("wanted message of type MessageText, but was %d", t)
 	}
+	timeLastMessageReceived = time.Now()
 
 	var wm WelcomeMessage
 	if err := json.Unmarshal(bs, &wm); err != nil {
@@ -151,6 +152,7 @@ func SubscribeForUpdates() {
 		if nm.Metadata.MessageType != "notification" {
 			log.Panicf("expecting notification message, but got %s", string(bs))
 		}
+		timeLastMessageReceived = time.Now()
 
 		log.Printf("Message from %s: %s (message ID %s)", nm.Payload.Event.ChatterUserName, nm.Payload.Event.Message.Text, nm.Payload.Event.MessageID)
 
