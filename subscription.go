@@ -114,8 +114,8 @@ func SubscribeForUpdates() {
 		Type:    "channel.chat.message",
 		Version: "1",
 		Condition: map[string]any{
-			"broadcaster_user_id": "820137268", // icosatess
-			"user_id":             "TODO",      // icosabot
+			"broadcaster_user_id": "820137268",  // icosatess
+			"user_id":             "1310854767", // icosabot
 		},
 		Transport: CreateSubscriptionTransport{
 			Method:    "webhook",
