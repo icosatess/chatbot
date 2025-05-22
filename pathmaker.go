@@ -2,17 +2,16 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
+	"errors"
 	"io"
 	"net/http"
+	"net/url"
 )
 
 type ComponentData struct {
 	Component    string `json:"component"`
 	RelativePath string `json:"relativePath"`
 }
-
-const baseURL = "https://icosatess.tail12901.ts.net"
 
 var componentNameToWorkspaceFolderName = map[string]string{
 	"ui":         "minimapui",
@@ -22,7 +21,7 @@ var componentNameToWorkspaceFolderName = map[string]string{
 	"chatbot":    "chatbot",
 }
 
-func main() {
+func MakeCodeBrowserURL() (*url.URL, error) {
 	resp, respErr := http.Get("http://127.0.0.1:8081/component/")
 	if respErr != nil {
 		panic(respErr)
@@ -37,23 +36,24 @@ func main() {
 	}
 	if componentData.Component == "" && componentData.RelativePath == "" {
 		// No data available
-		if _, err := fmt.Printf("No file is open\n"); err != nil {
-			panic(err)
-		}
+		return nil, errors.New("no file is open")
 	} else if componentData.Component == "" && componentData.RelativePath != "" {
 		// Open file is outside any workspace folder
-		if _, err := fmt.Printf("Current source file isn't available on the code viewer\n"); err != nil {
-			panic(err)
-		}
+		return nil, errors.New("current source file isn't available on the code viewer")
 	} else if componentData.Component != "" && componentData.RelativePath == "" {
 		// Open file does not have a file path
-		if _, err := fmt.Printf("Current source file isn't available on the code viewer\n"); err != nil {
-			panic(err)
-		}
+		return nil, errors.New("current source file isn't available on the code viewer")
 	} else {
 		workspaceFolderName := componentNameToWorkspaceFolderName[componentData.Component]
-		if _, err := fmt.Printf("%s/%s/%s\n", baseURL, workspaceFolderName, componentData.RelativePath); err != nil {
-			panic(err)
+		p, perr := url.JoinPath(workspaceFolderName, componentData.RelativePath)
+		if perr != nil {
+			panic(perr)
 		}
+		u := &url.URL{
+			Scheme: "https",
+			Host:   "icosatess.tail12901.ts.net",
+			Path:   p,
+		}
+		return u, nil
 	}
 }

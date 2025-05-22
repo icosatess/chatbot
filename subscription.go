@@ -8,12 +8,9 @@ import (
 	"log"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/coder/websocket"
 )
-
-var timeLastMessageReceived time.Time
 
 type WelcomeMessage struct {
 	Metadata struct {
@@ -98,7 +95,6 @@ func SubscribeForUpdates(client *http.Client) {
 	if t != websocket.MessageText {
 		log.Panicf("wanted message of type MessageText, but was %d", t)
 	}
-	timeLastMessageReceived = time.Now()
 
 	var wm WelcomeMessage
 	if err := json.Unmarshal(bs, &wm); err != nil {
@@ -169,7 +165,6 @@ func SubscribeForUpdates(client *http.Client) {
 		} else if nm.Metadata.MessageType != "notification" {
 			log.Panicf("expecting notification message, but got %s", string(bs))
 		}
-		timeLastMessageReceived = time.Now()
 
 		log.Printf("Message from %s: %s (message ID %s)", nm.Payload.Event.ChatterUserName, nm.Payload.Event.Message.Text, nm.Payload.Event.MessageID)
 
@@ -183,10 +178,16 @@ func SubscribeForUpdates(client *http.Client) {
 func SendCurrentEditorURL(client *http.Client) {
 	secrets := GetSecrets()
 
+	u, uerr := MakeCodeBrowserURL()
+	if uerr != nil {
+		log.Printf("couldn't figure out what URL to send to chat")
+		return
+	}
+
 	messageBody := sendChatMessageRequestBody{
 		BroadcasterID: "820137268",  // icosatess
 		SenderID:      "1310854767", // icosabot
-		Message:       "Hello, world!",
+		Message:       u.String(),
 	}
 
 	jreq, jreqErr := json.Marshal(messageBody)
