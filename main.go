@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -27,7 +26,7 @@ func main() {
 		ClientID:     secrets.ClientID,
 		ClientSecret: secrets.ClientSecret,
 		Scopes: []string{
-			"user:read:chat", "user:write:chat",
+			"user:read:chat", "user:write:chat", "user:bot",
 		},
 		Endpoint:    twitch.Endpoint,
 		RedirectURL: "http://localhost:8082",
@@ -55,39 +54,9 @@ func main() {
 
 			client := conf.Client(context.TODO(), tok)
 
-			broadcasterID, botID := GetBotsUserID(client, secrets.ClientID)
+			// broadcasterID, botID := GetBotsUserID(client, secrets.ClientID)
 
-			messageBody := sendChatMessageRequestBody{
-				BroadcasterID: broadcasterID,
-				SenderID:      botID,
-				Message:       "Hello, world!",
-			}
-
-			jreq, jreqErr := json.Marshal(messageBody)
-			if jreqErr != nil {
-				panic(jreqErr)
-			}
-
-			req, reqErr := http.NewRequest(http.MethodPost, "https://api.twitch.tv/helix/chat/messages", bytes.NewBuffer(jreq))
-			if reqErr != nil {
-				panic(reqErr)
-			}
-			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("Client-Id", secrets.ClientID)
-			resp, respErr := client.Do(req)
-			if respErr != nil {
-				panic(respErr)
-			}
-			defer resp.Body.Close()
-
-			if resp.StatusCode != 200 {
-				log.Printf("Wanted status code 200, but was %d", resp.StatusCode)
-				bs, _ := io.ReadAll(resp.Body)
-				log.Printf("Response body was %s", string(bs))
-				panic(resp)
-			}
-
-			SubscribeForUpdates()
+			SubscribeForUpdates(client)
 			done <- nil
 		}(code)
 

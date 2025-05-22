@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -83,7 +84,7 @@ type CreateSubscriptionRequestBody struct {
 	Transport CreateSubscriptionTransport `json:"transport"`
 }
 
-func SubscribeForUpdates() {
+func SubscribeForUpdates(client *http.Client) {
 	c, _, cerr := websocket.Dial(context.TODO(), "wss://eventsub.wss.twitch.tv/ws", nil)
 	if cerr != nil {
 		panic(cerr)
@@ -118,7 +119,7 @@ func SubscribeForUpdates() {
 			"user_id":             "1310854767", // icosabot
 		},
 		Transport: CreateSubscriptionTransport{
-			Method:    "webhook",
+			Method:    "websocket",
 			SessionID: wm.Payload.Session.ID,
 		},
 	}
@@ -127,12 +128,23 @@ func SubscribeForUpdates() {
 		panic(bserr)
 	}
 	buf := bytes.NewBuffer(bs)
-	resp, respErr := http.Post("https://api.twitch.tv/helix/eventsub/subscriptions", "application/json", buf)
+	req, reqErr := http.NewRequest(http.MethodPost, "https://api.twitch.tv/helix/eventsub/subscriptions", buf)
+	if reqErr != nil {
+		panic(reqErr)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	secrets := GetSecrets()
+	req.Header.Set("Client-Id", secrets.ClientID)
+	resp, respErr := client.Do(req)
 	if respErr != nil {
 		panic(respErr)
 	}
 	if resp.StatusCode != http.StatusAccepted {
-		log.Panicf("Wanted HTTP status 202, but was %d", resp.StatusCode)
+		body, bodyErr := io.ReadAll(resp.Body)
+		if bodyErr != nil {
+			panic(bodyErr)
+		}
+		log.Panicf("Wanted HTTP status 202, but was %s: %s", resp.Status, body)
 	}
 
 	for {
@@ -149,7 +161,12 @@ func SubscribeForUpdates() {
 		if err := json.Unmarshal(bs, &nm); err != nil {
 			panic(err)
 		}
-		if nm.Metadata.MessageType != "notification" {
+		if nm.Metadata.MessageType == "session_keepalive" {
+			// Cool story bro.
+			// TODO: update timeLastMessageReceived and add client disconnection logic
+			log.Println("received session_keepalive message")
+			continue
+		} else if nm.Metadata.MessageType != "notification" {
 			log.Panicf("expecting notification message, but got %s", string(bs))
 		}
 		timeLastMessageReceived = time.Now()
@@ -158,7 +175,42 @@ func SubscribeForUpdates() {
 
 		trimmed := strings.TrimSpace(nm.Payload.Event.Message.Text)
 		if strings.EqualFold(trimmed, "!source") {
-			// TODO: reply to the message with a link to the source code
+			SendCurrentEditorURL(client)
 		}
 	}
+}
+
+func SendCurrentEditorURL(client *http.Client) {
+	secrets := GetSecrets()
+
+	messageBody := sendChatMessageRequestBody{
+		BroadcasterID: "820137268",  // icosatess
+		SenderID:      "1310854767", // icosabot
+		Message:       "Hello, world!",
+	}
+
+	jreq, jreqErr := json.Marshal(messageBody)
+	if jreqErr != nil {
+		panic(jreqErr)
+	}
+
+	req, reqErr := http.NewRequest(http.MethodPost, "https://api.twitch.tv/helix/chat/messages", bytes.NewBuffer(jreq))
+	if reqErr != nil {
+		panic(reqErr)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Client-Id", secrets.ClientID)
+	resp, respErr := client.Do(req)
+	if respErr != nil {
+		panic(respErr)
+	}
+
+	if resp.StatusCode != 200 {
+		log.Printf("Wanted status code 200, but was %d", resp.StatusCode)
+		bs, _ := io.ReadAll(resp.Body)
+		log.Printf("Response body was %s", string(bs))
+		panic(resp)
+	}
+
+	defer resp.Body.Close()
 }
