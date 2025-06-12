@@ -29,8 +29,16 @@ type callbackHandler struct {
 }
 
 func (h callbackHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.Error(w, "This server supports callbacks only", http.StatusNotFound)
+		return
+	}
 	log.Printf("OAuth callback handler invoked")
 	code := r.FormValue("code")
+	if code == "" {
+		http.Error(w, "Missing code", http.StatusBadRequest)
+		return
+	}
 
 	tok, tokErr := oauth2Config.Exchange(context.TODO(), code)
 	if tokErr != nil {

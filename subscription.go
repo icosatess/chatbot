@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -12,89 +14,42 @@ import (
 	"github.com/coder/websocket"
 )
 
-type WelcomeMessage struct {
-	Metadata struct {
-		MessageType string `json:"message_type"` // "session_welcome"
-	} `json:"metadata"`
-	Payload struct {
-		Session struct {
-			ID                      string `json:"id"`
-			KeepaliveTimeoutSeconds int    `json:"keepalive_timeout_seconds"`
-		} `json:"session"`
-	} `json:"payload"`
-}
+var errCouldNotSubscribe = errors.New("couldn't subscribe for listening to chat")
+var errUnexpectedProtocolInteraction = errors.New("the Twitch API server engaged in an unexpected interaction")
 
-type KeepaliveMessage struct {
-	Metadata struct {
-		MessageType string `json:"message_type"` // "session_keepalive"
-	} `json:"metadata"`
-	Payload struct{} `json:"payload"`
-}
-
-type NotificationMessage struct {
-	Metadata struct {
-		MessageType string `json:"message_type"` // "notification"
-	} `json:"metadata"`
-	Payload struct {
-		Event ChannelChatMessageEvent `json:"event"`
-	} `json:"payload"`
-}
-
-type ChannelChatMessageEvent struct {
-	ChatterUserName string `json:"chatter_user_name"`
-	MessageID       string `json:"message_id"`
-	Message         struct {
-		Text string `json:"text"`
-	} `json:"message"`
-}
-
-type sendChatMessageRequestBody struct {
-	BroadcasterID        string `json:"broadcaster_id"`
-	SenderID             string `json:"sender_id"`
-	Message              string `json:"message"`
-	ReplyParentMessageID string `json:"reply_parent_message_id"`
-}
-
-// Create subscription POST https://api.twitch.tv/helix/eventsub/subscriptions
-
-type CreateSubscriptionTransport struct {
-	Method    string `json:"method"` // websocket
-	SessionID string `json:"session_id"`
-}
-
-type CreateSubscriptionRequestBody struct {
-	Type      string                      `json:"type"`      // "channel.chat.message"
-	Version   string                      `json:"version"`   // 1
-	Condition map[string]any              `json:"condition"` // broadcaster_user_id: {icosatess}, user_id: {icosabot}
-	Transport CreateSubscriptionTransport `json:"transport"`
-}
-
-func SubscribeForUpdates(client *http.Client) {
-	c, _, cerr := websocket.Dial(context.TODO(), "wss://eventsub.wss.twitch.tv/ws", nil)
+func GetListeningConnection(client *http.Client) (*websocket.Conn, error) {
+	ctx := context.TODO()
+	c, _, cerr := websocket.Dial(ctx, "wss://eventsub.wss.twitch.tv/ws", nil)
 	if cerr != nil {
-		panic(cerr)
+		log.Printf("error dialing for websocket, will bail: %v", cerr)
+		return nil, errCouldNotSubscribe
 	}
-	defer c.Close(websocket.StatusNormalClosure, "Bye")
 
-	t, bs, rerr := c.Read(context.TODO())
-	if rerr != nil {
-		panic(rerr)
+	messageType, createRequestBs, messageErr := c.Read(ctx)
+	if messageErr != nil {
+		log.Printf("error reading welcome message from websocket, will bail: %v", cerr)
+		return nil, errCouldNotSubscribe
 	}
-	if t != websocket.MessageText {
-		log.Panicf("wanted message of type MessageText, but was %d", t)
+	if messageType != websocket.MessageText {
+		log.Printf("wanted message of type MessageText, but was %d, will bail", messageType)
+		return nil, errUnexpectedProtocolInteraction
 	}
 
 	var wm WelcomeMessage
-	if err := json.Unmarshal(bs, &wm); err != nil {
-		panic(err)
+	var syntaxError *json.SyntaxError
+	if err := json.Unmarshal(createRequestBs, &wm); errors.As(err, &syntaxError) {
+		log.Printf("Twitch returned welcome message with syntax error: %v", syntaxError)
+		return nil, errUnexpectedProtocolInteraction
+	} else if err != nil {
+		log.Printf("Unexpected error unmarshalling welcome message: %v", syntaxError)
+		return nil, errCouldNotSubscribe
 	}
 
 	if wmt := wm.Metadata.MessageType; wmt != "session_welcome" {
-		log.Panicf("wanted message of type session_welcome, but was %s", wmt)
+		log.Printf("wanted message of type session_welcome, but was %s", wmt)
+		return nil, errUnexpectedProtocolInteraction
 	}
 
-	// TODO: get a user access token for... icosabot?
-	// Scopes: user:read:chat
 	createRequest := CreateSubscriptionRequestBody{
 		Type:    "channel.chat.message",
 		Version: "1",
@@ -102,56 +57,71 @@ func SubscribeForUpdates(client *http.Client) {
 			"broadcaster_user_id": "820137268",  // icosatess
 			"user_id":             "1310854767", // icosabot
 		},
-		Transport: CreateSubscriptionTransport{
+		Transport: createSubscriptionTransport{
 			Method:    "websocket",
 			SessionID: wm.Payload.Session.ID,
 		},
 	}
-	bs, bserr := json.Marshal(createRequest)
-	if bserr != nil {
-		panic(bserr)
+	createRequestBs, createRequestBsErr := json.Marshal(createRequest)
+	if createRequestBsErr != nil {
+		log.Printf("failed to marshal create subscription request: %v", createRequestBsErr)
+		return nil, errCouldNotSubscribe
 	}
-	buf := bytes.NewBuffer(bs)
-	req, reqErr := http.NewRequest(http.MethodPost, "https://api.twitch.tv/helix/eventsub/subscriptions", buf)
+	buf := bytes.NewBuffer(createRequestBs)
+	req, reqErr := http.NewRequestWithContext(ctx, http.MethodPost, "https://api.twitch.tv/helix/eventsub/subscriptions", buf)
 	if reqErr != nil {
-		panic(reqErr)
+		log.Printf("failed to create subscriptions request: %v", reqErr)
+		return nil, errCouldNotSubscribe
 	}
-	req.Header.Set("Content-Type", "application/json")
+
 	secrets := GetSecrets()
+	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Client-Id", secrets.ClientID)
 	resp, respErr := client.Do(req)
 	if respErr != nil {
-		panic(respErr)
+		log.Printf("failed to post to subscriptions endpoint: %v", respErr)
+		return nil, errCouldNotSubscribe
 	}
 	if resp.StatusCode != http.StatusAccepted {
 		body, bodyErr := io.ReadAll(resp.Body)
 		if bodyErr != nil {
-			panic(bodyErr)
+			// If body can't be read, just put the error message in its place.
+			body = fmt.Appendf(nil, "error reading body: %v", bodyErr)
 		}
-		log.Panicf("Wanted HTTP status 202, but was %s: %s", resp.Status, body)
+		log.Printf("Wanted HTTP status 202, but was %s: %s", resp.Status, body)
+		return nil, errUnexpectedProtocolInteraction
 	}
 
+	return c, nil
+}
+
+func SubscribeForUpdates(client *http.Client, conn *websocket.Conn) {
+	ctx := context.TODO()
+
 	for {
-		t, bs, err := c.Read(context.TODO())
-		if err != nil {
+		messageType, messageBytes, messageErr := conn.Read(ctx)
+		if messageErr != nil {
 			// This probably includes intentional closing from Twitch
-			panic(err)
+			log.Printf("failed to read message from Twitch, ignoring: %v", messageErr)
+			continue
 		}
-		if t != websocket.MessageText {
-			log.Panicf("wanted message type MessageText, but was %d", t)
+		if messageType != websocket.MessageText {
+			log.Printf("wanted message type MessageText, but was %d, ignoring", messageType)
+			continue
 		}
 
 		var nm NotificationMessage
-		if err := json.Unmarshal(bs, &nm); err != nil {
-			panic(err)
+		if err := json.Unmarshal(messageBytes, &nm); err != nil {
+			log.Printf("unexpected error unmarshalling message from Twitch, ignoring: %v", err)
+			continue
 		}
 		if nm.Metadata.MessageType == "session_keepalive" {
 			// Cool story bro.
 			// TODO: update timeLastMessageReceived and add client disconnection logic
-			log.Println("received session_keepalive message")
 			continue
 		} else if nm.Metadata.MessageType != "notification" {
-			log.Panicf("expecting notification message, but got %s", string(bs))
+			log.Printf("expecting notification message, but got %s, ignoring", string(messageBytes))
+			continue
 		}
 
 		log.Printf("Message from %s: %s (message ID %s)", nm.Payload.Event.ChatterUserName, nm.Payload.Event.Message.Text, nm.Payload.Event.MessageID)
@@ -161,45 +131,4 @@ func SubscribeForUpdates(client *http.Client) {
 			SendCurrentEditorURL(client)
 		}
 	}
-}
-
-func SendCurrentEditorURL(client *http.Client) {
-	secrets := GetSecrets()
-
-	u, uerr := MakeCodeBrowserURL()
-	if uerr != nil {
-		log.Printf("couldn't figure out what URL to send to chat")
-		return
-	}
-
-	messageBody := sendChatMessageRequestBody{
-		BroadcasterID: "820137268",  // icosatess
-		SenderID:      "1310854767", // icosabot
-		Message:       u.String(),
-	}
-
-	jreq, jreqErr := json.Marshal(messageBody)
-	if jreqErr != nil {
-		panic(jreqErr)
-	}
-
-	req, reqErr := http.NewRequest(http.MethodPost, "https://api.twitch.tv/helix/chat/messages", bytes.NewBuffer(jreq))
-	if reqErr != nil {
-		panic(reqErr)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Client-Id", secrets.ClientID)
-	resp, respErr := client.Do(req)
-	if respErr != nil {
-		panic(respErr)
-	}
-
-	if resp.StatusCode != 200 {
-		log.Printf("Wanted status code 200, but was %d", resp.StatusCode)
-		bs, _ := io.ReadAll(resp.Body)
-		log.Printf("Response body was %s", string(bs))
-		panic(resp)
-	}
-
-	defer resp.Body.Close()
 }

@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 )
@@ -56,4 +58,45 @@ func MakeCodeBrowserURL() (*url.URL, error) {
 		}
 		return u, nil
 	}
+}
+
+func SendCurrentEditorURL(client *http.Client) {
+	secrets := GetSecrets()
+
+	u, uerr := MakeCodeBrowserURL()
+	if uerr != nil {
+		log.Printf("couldn't figure out what URL to send to chat")
+		return
+	}
+
+	messageBody := SendChatMessageRequestBody{
+		BroadcasterID: "820137268",  // icosatess
+		SenderID:      "1310854767", // icosabot
+		Message:       u.String(),
+	}
+
+	jreq, jreqErr := json.Marshal(messageBody)
+	if jreqErr != nil {
+		panic(jreqErr)
+	}
+
+	req, reqErr := http.NewRequest(http.MethodPost, "https://api.twitch.tv/helix/chat/messages", bytes.NewBuffer(jreq))
+	if reqErr != nil {
+		panic(reqErr)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Client-Id", secrets.ClientID)
+	resp, respErr := client.Do(req)
+	if respErr != nil {
+		panic(respErr)
+	}
+
+	if resp.StatusCode != 200 {
+		log.Printf("Wanted status code 200, but was %d", resp.StatusCode)
+		bs, _ := io.ReadAll(resp.Body)
+		log.Printf("Response body was %s", string(bs))
+		panic(resp)
+	}
+
+	defer resp.Body.Close()
 }
