@@ -48,24 +48,12 @@ type ChannelChatMessageEvent struct {
 	} `json:"message"`
 }
 
-/*
-{
-  "metadata": {
-    "message_id": "96a3f3b5-5dec-4eed-908e-e11ee657416c",
-    "message_type": "session_welcome",
-    "message_timestamp": "2023-07-19T14:56:51.634234626Z"
-  },
-  "payload": {
-    "session": {
-      "id": "AQoQILE98gtqShGmLD7AM6yJThAB",
-      "status": "connected",
-      "connected_at": "2023-07-19T14:56:51.616329898Z",
-      "keepalive_timeout_seconds": 10,
-      "reconnect_url": null
-    }
-  }
+type sendChatMessageRequestBody struct {
+	BroadcasterID        string `json:"broadcaster_id"`
+	SenderID             string `json:"sender_id"`
+	Message              string `json:"message"`
+	ReplyParentMessageID string `json:"reply_parent_message_id"`
 }
-*/
 
 // Create subscription POST https://api.twitch.tv/helix/eventsub/subscriptions
 
