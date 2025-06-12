@@ -18,7 +18,7 @@ func main() {
 		log.Fatalf("unexpected error getting OAuth2 tokens: %v", clientErr)
 	}
 
-	conn, connErr := GetListeningConnection(client)
+	conn, connErr := GetListeningConnection(ctx, client)
 	if errors.Is(connErr, errCouldNotSubscribe) {
 		log.Printf("failed to subscribe for listening to chat: %v", connErr)
 	} else if errors.Is(connErr, errUnexpectedProtocolInteraction) {

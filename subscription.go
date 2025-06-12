@@ -17,8 +17,7 @@ import (
 var errCouldNotSubscribe = errors.New("couldn't subscribe for listening to chat")
 var errUnexpectedProtocolInteraction = errors.New("the Twitch API server engaged in an unexpected interaction")
 
-func GetListeningConnection(client *http.Client) (*websocket.Conn, error) {
-	ctx := context.TODO()
+func GetListeningConnection(ctx context.Context, client *http.Client) (*websocket.Conn, error) {
 	c, _, cerr := websocket.Dial(ctx, "wss://eventsub.wss.twitch.tv/ws", nil)
 	if cerr != nil {
 		log.Printf("error dialing for websocket, will bail: %v", cerr)
