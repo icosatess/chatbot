@@ -95,9 +95,11 @@ func GetListeningConnection(client *http.Client) (*websocket.Conn, error) {
 	return c, nil
 }
 
-func SubscribeForUpdates(client *http.Client, conn *websocket.Conn) {
-	ctx := context.TODO()
+type ChatActionDispatcher interface {
+	SendSourceURL()
+}
 
+func SubscribeForUpdates(ctx context.Context, conn *websocket.Conn, dispatcher ChatActionDispatcher) {
 	for {
 		messageType, messageBytes, messageErr := conn.Read(ctx)
 		if messageErr != nil {
@@ -128,7 +130,8 @@ func SubscribeForUpdates(client *http.Client, conn *websocket.Conn) {
 
 		trimmed := strings.TrimSpace(nm.Payload.Event.Message.Text)
 		if strings.EqualFold(trimmed, "!source") {
-			SendCurrentEditorURL(client)
+			log.Printf("dispatching sending of current editor URL upon chat request")
+			dispatcher.SendSourceURL()
 		}
 	}
 }

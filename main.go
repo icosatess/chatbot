@@ -9,7 +9,9 @@ import (
 )
 
 func main() {
-	client, clientErr := DoOauthDance(context.TODO())
+	ctx := context.TODO()
+
+	client, clientErr := DoOauthDance(ctx)
 	if errors.Is(clientErr, errNoTokenReceived) {
 		log.Fatalf("failed to get token, check logs")
 	} else if clientErr != nil {
@@ -25,5 +27,7 @@ func main() {
 		log.Panicf("failed to subscribe to chat due to unexpected error: %v", connErr)
 	}
 	defer conn.Close(websocket.StatusNormalClosure, "Bye")
-	SubscribeForUpdates(client, conn)
+
+	d := dispatcher{client}
+	SubscribeForUpdates(ctx, conn, d)
 }
