@@ -11,7 +11,7 @@ import (
 func main() {
 	ctx := context.TODO()
 
-	client, clientErr := DoOauthDance(ctx)
+	client, clientErr := MakeAuthorizedClient(ctx)
 	if errors.Is(clientErr, errNoTokenReceived) {
 		log.Fatalf("failed to get token, check logs")
 	} else if clientErr != nil {
