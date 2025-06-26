@@ -9,7 +9,13 @@
             "type": "go",
             "request": "launch",
             "mode": "auto",
-            "program": "${workspaceFolder}"
+            "program": "${workspaceFolder}",
+            "env": {
+                "BROADCASTER_USERNAME": "icosatess",
+                "BOT_USERNAME": "icosabot",
+                "MINIMAP_SERVER_ADDRESS": "http://127.0.0.1:8081",
+                "CODE_SERVER_ADDRESS": "https://icosatess.tail12901.ts.net"
+            }
         }
     ]
 }

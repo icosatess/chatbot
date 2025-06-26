@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -17,7 +18,8 @@ type getUsersResponseBody struct {
 
 // GetBotsUserID returns the user ID of the broadcaster and the user ID of the bot.
 func GetBotsUserID(client *http.Client, clientID string) (string, string) {
-	req, reqErr := http.NewRequest(http.MethodGet, "https://api.twitch.tv/helix/users?login=icosatess&login=icosabot", nil)
+	// TODO: Make this safer
+	req, reqErr := http.NewRequest(http.MethodGet, fmt.Sprintf("https://api.twitch.tv/helix/users?login=%s&login=%s", broadcasterUsername, botUsername), nil)
 	if reqErr != nil {
 		panic(reqErr)
 	}
@@ -50,9 +52,9 @@ func GetBotsUserID(client *http.Client, clientID string) (string, string) {
 	var broadcasterID, botID string
 	for _, entry := range users.Data {
 		switch {
-		case strings.EqualFold(entry.Login, "icosatess"):
+		case strings.EqualFold(entry.Login, broadcasterUsername):
 			broadcasterID = entry.ID
-		case strings.EqualFold(entry.Login, "icosabot"):
+		case strings.EqualFold(entry.Login, botUsername):
 			botID = entry.ID
 		}
 	}

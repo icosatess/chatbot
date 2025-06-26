@@ -4,9 +4,15 @@ import (
 	"context"
 	"errors"
 	"log"
+	"os"
 
 	"github.com/coder/websocket"
 )
+
+var broadcasterUsername = os.Getenv("BROADCASTER_USERNAME")
+var botUsername = os.Getenv("BOT_USERNAME")
+var minimapServerAddress = os.Getenv("MINIMAP_SERVER_ADDRESS")
+var codeServerAddress = os.Getenv("CODE_SERVER_ADDRESS")
 
 func main() {
 	ctx := context.TODO()

@@ -15,16 +15,9 @@ type ComponentData struct {
 	RelativePath string `json:"relativePath"`
 }
 
-var componentNameToWorkspaceFolderName = map[string]string{
-	"ui":         "minimapui",
-	"server":     "minimapsrv",
-	"extension":  "minimapext",
-	"codeserver": "codesrv",
-	"chatbot":    "chatbot",
-}
-
 func MakeCodeBrowserURL() (*url.URL, error) {
-	resp, respErr := http.Get("http://127.0.0.1:8081/component/")
+	// TODO: Make this safer
+	resp, respErr := http.Get(minimapServerAddress + "/component/")
 	if respErr != nil {
 		panic(respErr)
 	}
@@ -46,15 +39,15 @@ func MakeCodeBrowserURL() (*url.URL, error) {
 		// Open file does not have a file path
 		return nil, errors.New("current source file isn't available on the code viewer")
 	} else {
-		workspaceFolderName := componentNameToWorkspaceFolderName[componentData.Component]
+		workspaceFolderName := componentData.Component
 		p, perr := url.JoinPath(workspaceFolderName, componentData.RelativePath)
 		if perr != nil {
 			panic(perr)
 		}
-		u := &url.URL{
-			Scheme: "https",
-			Host:   "icosatess.tail12901.ts.net",
-			Path:   p,
+		// TODO: Make this safer
+		u, uerr := url.Parse(codeServerAddress + "/" + p)
+		if uerr != nil {
+			panic(uerr)
 		}
 		return u, nil
 	}
@@ -69,9 +62,11 @@ func SendCurrentEditorURL(client *http.Client) {
 		return
 	}
 
+	broadcasterUserID, botUserID := GetBotsUserID(client, secrets.ClientID)
+
 	messageBody := SendChatMessageRequestBody{
-		BroadcasterID: "820137268",  // icosatess
-		SenderID:      "1310854767", // icosabot
+		BroadcasterID: broadcasterUserID,
+		SenderID:      botUserID,
 		Message:       u.String(),
 	}
 

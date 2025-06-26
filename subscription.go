@@ -49,12 +49,14 @@ func GetListeningConnection(ctx context.Context, client *http.Client) (*websocke
 		return nil, errUnexpectedProtocolInteraction
 	}
 
+	broadcasterUserID, botUserID := GetBotsUserID(client, secrets.ClientID)
+
 	createRequest := CreateSubscriptionRequestBody{
 		Type:    "channel.chat.message",
 		Version: "1",
 		Condition: map[string]any{
-			"broadcaster_user_id": "820137268",  // icosatess
-			"user_id":             "1310854767", // icosabot
+			"broadcaster_user_id": broadcasterUserID,
+			"user_id":             botUserID,
 		},
 		Transport: createSubscriptionTransport{
 			Method:    "websocket",
